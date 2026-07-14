@@ -1,14 +1,10 @@
 pipeline {
+
     agent any
 
-    tools {
-        maven 'Maven3'
-    }
-
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
         DOCKER_IMAGE = "akashms54/ott-platform"
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     options {
@@ -20,96 +16,79 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Building with Maven...'
-                sh 'mvn -B clean compile'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo 'Running unit tests...'
-                sh 'mvn -B test'
-            }
-
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('Package') {
-            steps {
-                echo 'Packaging application as JAR...'
-                sh 'mvn -B package -DskipTests'
-            }
-
-            post {
-                success {
-                    archiveArtifacts artifacts: 'target/*.jar',
-                                     fingerprint: true
-                }
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-                echo 'Building Docker image...'
-
-                sh """
-                docker build \
-                -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
-                -t ${DOCKER_IMAGE}:latest .
-                """
-            }
-        }
-
-        stage('Docker Push') {
-            steps {
-                echo 'Pushing Docker image to registry...'
-
                 sh '''
-                echo $DOCKERHUB_CREDENTIALS_PSW | \
-                docker login \
-                -u $DOCKERHUB_CREDENTIALS_USR \
-                --password-stdin
+                    docker build \
+                        -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                        -t ${DOCKER_IMAGE}:latest .
                 '''
+            }
+        }
 
-                sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
+        stage('Push Docker Image') {
+            steps {
 
-                sh "docker push ${DOCKER_IMAGE}:latest"
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login \
+                            -u "$DOCKER_USER" \
+                            --password-stdin
+
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+
+                        docker logout
+                    '''
+                }
             }
         }
 
         stage('Deploy') {
             steps {
-                echo 'Deploying with docker-compose...'
+                sh '''
+                    docker compose down || true
+                    docker compose pull
+                    docker compose up -d
+                '''
+            }
+        }
 
-                sh 'docker compose down || true'
+        stage('Health Check') {
+            steps {
+                sh '''
+                    echo "Waiting for application..."
+                    sleep 30
 
-                sh 'docker compose up -d --no-build'
+                    curl -f http://localhost:8085/api/ping
+                '''
             }
         }
     }
 
     post {
+
         success {
-            echo 'Pipeline completed successfully!'
+            echo "Pipeline completed successfully."
         }
 
         failure {
-            echo 'Pipeline failed. Check the logs above.'
+            echo "Pipeline failed."
         }
 
         always {
-            echo 'Pipeline finished.'
-       }
+            cleanWs()
+        }
     }
 }
