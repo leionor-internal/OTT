@@ -71,7 +71,7 @@ pipeline {
                     echo "Waiting for application..."
                     sleep 30
 
-                    curl -f http://localhost:8085/api/ping
+                    curl -f http://localhost:8085/
                 '''
             }
         }
