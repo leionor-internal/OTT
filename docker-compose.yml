@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ott-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ottdb
+      MYSQL_USER: ottuser
+      MYSQL_PASSWORD: ottpass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - ott-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ott-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ott-platform:latest
+    container_name: ott-platform-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ottdb
+      DB_USERNAME: ottuser
+      DB_PASSWORD: ottpass
+      SERVER_PORT: 8080
+    ports:
+      - "8084:8080"
+    networks:
+      - ott-network
+
+volumes:
+  ott-mysql-data:
+
+networks:
+  ott-network:
+    driver: bridge
