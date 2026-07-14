@@ -3,7 +3,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "akashms54/ott-platform"
+        DOCKER_IMAGE = "likithus/ott-platform"
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
